@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""
-Cloud-Native Web Service with Database Integration
-A scalable REST API demonstrating cloud-native patterns
-"""
 
 import os
 import time
