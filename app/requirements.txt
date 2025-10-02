@@ -1,0 +1,5 @@
+Flask==2.3.3
+psycopg2-binary==2.9.7
+prometheus-client==0.18.0
+gunicorn==21.2.0
+Werkzeug==2.3.7
