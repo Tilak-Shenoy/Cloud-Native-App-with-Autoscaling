@@ -1,0 +1,148 @@
+# AWS Load Balancer Controller Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cloudapp-ingress
+  namespace: cloudapp
+  labels:
+    app: cloudapp
+    component: ingress
+  annotations:
+    # AWS Load Balancer Controller annotations
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/load-balancer-name: cloudapp-dev-alb
+    
+    # Health check configuration
+    alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
+    alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: '30'
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: '10'
+    alb.ingress.kubernetes.io/healthy-threshold-count: '2'
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: '3'
+    
+    # SSL/TLS configuration
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-west-2:ACCOUNT_ID:certificate/CERT_ID  # Replace with actual cert ARN
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS-1-2-2017-01
+    
+    # Load balancer attributes
+    alb.ingress.kubernetes.io/load-balancer-attributes: |
+      routing.http2.enabled=true,
+      idle_timeout.timeout_seconds=60,
+      deletion_protection.enabled=false,
+      access_logs.s3.enabled=true,
+      access_logs.s3.bucket=cloudapp-dev-alb-logs,
+      access_logs.s3.prefix=alb-logs
+    
+    # Subnets (replace with actual subnet IDs)
+    alb.ingress.kubernetes.io/subnets: subnet-12345678,subnet-87654321,subnet-11223344
+    
+    # Security groups
+    alb.ingress.kubernetes.io/security-groups: sg-12345678
+    
+    # Tags
+    alb.ingress.kubernetes.io/tags: |
+      Environment=dev,
+      Project=cloudapp,
+      ManagedBy=kubernetes
+    
+spec:
+  rules:
+  - host: api.cloudapp.example.com  # Replace with your domain
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: cloudapp-service
+            port:
+              number: 80
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: cloudapp-service
+            port:
+              number: 80
+      - path: /health
+        pathType: Exact
+        backend:
+          service:
+            name: cloudapp-service
+            port:
+              number: 80
+      - path: /metrics
+        pathType: Exact
+        backend:
+          service:
+            name: cloudapp-service
+            port:
+              number: 80
+  
+  # Default backend for unmatched routes
+  defaultBackend:
+    service:
+      name: cloudapp-service
+      port:
+        number: 80
+  
+  tls:
+  - hosts:
+    - api.cloudapp.example.com
+    secretName: cloudapp-tls  # Optional: use this for cert-manager
+---
+# Alternative: NGINX Ingress Controller configuration
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cloudapp-nginx-ingress
+  namespace: cloudapp
+  labels:
+    app: cloudapp
+    component: ingress
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    
+    # Rate limiting
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    
+    # CORS configuration
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Content-Type, Authorization"
+    
+    # Load balancing
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$request_uri"
+    
+    # Health check
+    nginx.ingress.kubernetes.io/health-check-path: "/health"
+    
+    # Cert-manager annotation (if using cert-manager)
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    
+spec:
+  rules:
+  - host: api.cloudapp.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: cloudapp-service
+            port:
+              number: 80
+  
+  tls:
+  - hosts:
+    - api.cloudapp.example.com
+    secretName: cloudapp-nginx-tls

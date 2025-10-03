@@ -1,0 +1,259 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudapp-deployment
+  namespace: cloudapp
+  labels:
+    app: cloudapp
+    component: web
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cloudapp
+      component: web
+  template:
+    metadata:
+      labels:
+        app: cloudapp
+        component: web
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: cloudapp-service-account
+      
+      # Security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      
+      # Init container for database migrations
+      initContainers:
+      - name: db-migrate
+        image: 123456789012.dkr.ecr.us-west-2.amazonaws.com/cloudapp:latest  # Replace 123456789012 with AWS account ID
+        command: ['python', '-c']
+        args:
+        - |
+          import psycopg2
+          import os
+          import time
+          import sys
+          
+          # Wait for database to be ready
+          max_retries = 30
+          for i in range(max_retries):
+              try:
+                  conn = psycopg2.connect(
+                      host=os.getenv('DB_HOST'),
+                      port=os.getenv('DB_PORT'),
+                      database=os.getenv('DB_NAME'),
+                      user=os.getenv('DB_USER'),
+                      password=os.getenv('DB_PASSWORD')
+                  )
+                  print("Database is ready!")
+                  conn.close()
+                  sys.exit(0)
+              except Exception as e:
+                  print(f"Attempt {i+1}: Database not ready - {e}")
+                  time.sleep(2)
+          
+          print("Database connection failed after all retries")
+          sys.exit(1)
+        env:
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: cloudapp-secrets
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: cloudapp-config
+              key: DB_PORT
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: cloudapp-config
+              key: DB_NAME
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: cloudapp-config
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: cloudapp-secrets
+              key: DB_PASSWORD
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      
+      containers:
+      - name: cloudapp
+        image: 123456789012.dkr.ecr.us-west-2.amazonaws.com/cloudapp:latest  # Replace 123456789012 with AWS account ID
+        imagePullPolicy: Always
+        
+        ports:
+        - containerPort: 5000
+          name: http
+          protocol: TCP
+        
+        # Environment variables
+        env:
+        - name: DEBUG
+          valueFrom:
+            configMapKeyRef:
+              name: cloudapp-config
+              key: DEBUG
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: cloudapp-config
+              key: PORT
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: cloudapp-secrets
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: cloudapp-config
+              key: DB_PORT
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: cloudapp-config
+              key: DB_NAME
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: cloudapp-config
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: cloudapp-secrets
+              key: DB_PASSWORD
+        
+        # Resource limits and requests
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+        
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+          successThreshold: 1
+        
+        # Startup probe for slow-starting applications
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+          successThreshold: 1
+        
+        # Security context
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        
+        # Volume mounts for writable directories
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: app-cache
+          mountPath: /app/.cache
+      
+      # Volumes
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: app-cache
+        emptyDir: {}
+      
+      # Pod disruption budget
+      # (Note: This should be in a separate file in production)
+      terminationGracePeriodSeconds: 30
+      
+      # Node affinity and tolerations
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - cloudapp
+              topologyKey: kubernetes.io/hostname
+      
+      # Restart policy
+      restartPolicy: Always
+---
+# Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cloudapp-service-account
+  namespace: cloudapp
+  labels:
+    app: cloudapp
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/cloudapp-dev-pod-role  # Replace with actual role ARN
+---
+# Pod Disruption Budget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cloudapp-pdb
+  namespace: cloudapp
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: cloudapp
+      component: web

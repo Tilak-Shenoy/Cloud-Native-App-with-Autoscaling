@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudapp-config
+  namespace: cloudapp
+  labels:
+    app: cloudapp
+    component: config
+data:
+  # Application configuration
+  DEBUG: "false"
+  LOG_LEVEL: "INFO"
+  PORT: "5000"
+  
+  # Database configuration (non-sensitive)
+  DB_PORT: "5432"
+  DB_NAME: "cloudapp"
+  DB_USER: "postgres"
+  
+  # Performance tuning
+  WORKERS: "4"
+  WORKER_CONNECTIONS: "1000"
+  TIMEOUT: "30"
+  KEEPALIVE: "2"
+  
+  # Health check configuration
+  HEALTH_CHECK_INTERVAL: "30"
+  HEALTH_CHECK_TIMEOUT: "10"
+  HEALTH_CHECK_RETRIES: "3"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudapp-nginx-config
+  namespace: cloudapp
+  labels:
+    app: cloudapp
+    component: nginx
+data:
+  nginx.conf: |
+    upstream app {
+        server 127.0.0.1:5000;
+    }
+    
+    server {
+        listen 80;
+        server_name _;
+        
+        # Health check endpoint
+        location /health {
+            proxy_pass http://app;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            access_log off;
+        }
+        
+        # Metrics endpoint (internal only)
+        location /metrics {
+            proxy_pass http://app;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            # Only allow from internal networks
+            allow 10.0.0.0/8;
+            allow 172.16.0.0/12;
+            allow 192.168.0.0/16;
+            deny all;
+        }
+        
+        # Main application
+        location / {
+            proxy_pass http://app;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # Timeouts
+            proxy_connect_timeout 30s;
+            proxy_send_timeout 30s;
+            proxy_read_timeout 30s;
+            
+            # Buffer settings
+            proxy_buffering on;
+            proxy_buffer_size 4k;
+            proxy_buffers 8 4k;
+        }
+        
+        # Static files (if any)
+        location /static/ {
+            alias /app/static/;
+            expires 1d;
+            add_header Cache-Control "public, immutable";
+        }
+    }
