@@ -51,15 +51,6 @@ resource "aws_security_group" "app" {
     security_groups = [aws_security_group.alb.id]
   }
 
-  # Health check port from ALB
-  ingress {
-    description     = "Health check from ALB"
-    from_port       = 5000
-    to_port         = 5000
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
-  }
-
   # Allow all traffic within the security group (for pod-to-pod communication)
   ingress {
     description = "Internal communication"
