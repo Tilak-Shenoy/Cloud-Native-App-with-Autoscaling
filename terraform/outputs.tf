@@ -15,9 +15,9 @@ output "public_subnet_ids" {
   value       = module.vpc.public_subnet_ids
 }
 
-output "eks_cluster_name" {
-  description = "Name of the EKS cluster"
-  value       = module.eks.cluster_name
+output "eks_cluster_id" {
+  description = "ID of the EKS cluster"
+  value       = module.eks.cluster_id
 }
 
 output "eks_cluster_endpoint" {
@@ -70,7 +70,7 @@ output "database_security_group_id" {
 # Connection info for kubectl
 output "kubectl_config_command" {
   description = "Command to configure kubectl"
-  value       = "aws eks update-kubeconfig --region ${var.aws_region} --name ${module.eks.cluster_name}"
+  value       = "aws eks update-kubeconfig --region ${var.aws_region} --name ${module.eks.cluster_id}"
 }
 
 # Database connection string (for application configuration)

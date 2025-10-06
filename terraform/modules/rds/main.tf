@@ -12,7 +12,7 @@ resource "aws_db_subnet_group" "main" {
 
 # DB Parameter Group
 resource "aws_db_parameter_group" "main" {
-  family = "postgres15"
+  family = "postgres16"
   name   = "${var.project_name}-${var.environment}-db-params"
 
   parameter {
@@ -22,12 +22,13 @@ resource "aws_db_parameter_group" "main" {
 
   parameter {
     name  = "log_min_duration_statement"
-    value = "1000"  # Log statements taking more than 1 second
+    value = "1000" # Log statements taking more than 1 second
   }
 
   parameter {
-    name  = "shared_preload_libraries"
-    value = "pg_stat_statements"
+    name         = "shared_preload_libraries"
+    value        = "pg_stat_statements"
+    apply_method = "pending-reboot"
   }
 
   tags = merge(var.tags, {
@@ -46,15 +47,15 @@ resource "aws_db_instance" "main" {
   identifier = "${var.project_name}-${var.environment}-postgres"
 
   # Engine configuration
-  engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = var.db_instance_class
+  engine                = "postgres"
+  engine_version        = "16"
+  instance_class        = var.db_instance_class
 
   # Storage configuration
   allocated_storage     = var.db_allocated_storage
   max_allocated_storage = var.db_allocated_storage * 2
-  storage_type         = "gp3"
-  storage_encrypted    = true
+  storage_type          = "gp3"
+  storage_encrypted     = true
 
   # Database configuration
   db_name  = var.db_name
@@ -71,22 +72,22 @@ resource "aws_db_instance" "main" {
 
   # Backup and maintenance
   backup_retention_period = 7
-  backup_window          = "03:00-04:00"
-  maintenance_window     = "sun:04:00-sun:05:00"
+  backup_window           = "03:00-04:00"
+  maintenance_window      = "sun:04:00-sun:05:00"
 
   # Monitoring
   monitoring_interval = 60
   monitoring_role_arn = aws_iam_role.rds_monitoring.arn
 
   # Performance insights
-  performance_insights_enabled = true
+  performance_insights_enabled          = true
   performance_insights_retention_period = 7
 
   # Deletion protection and snapshots
-  deletion_protection       = false  # Set to true in production
-  delete_automated_backups = false
+  deletion_protection       = false # Set to true in production
+  delete_automated_backups  = false
   final_snapshot_identifier = "${var.project_name}-${var.environment}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}"
-  skip_final_snapshot      = false
+  skip_final_snapshot       = false
 
   # Auto minor version upgrade
   auto_minor_version_upgrade = true
